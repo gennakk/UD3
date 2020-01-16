@@ -1,5 +1,5 @@
-from GestorBBDD import GestorBBDD
-from GestorBBDDorm import GestorBBDDorm
+
+from PythonEjercicios.GestorBBDDorm import GestorBBDDorm
 
 gestor = GestorBBDDorm()
 

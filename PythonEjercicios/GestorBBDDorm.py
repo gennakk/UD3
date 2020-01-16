@@ -1,13 +1,13 @@
 import os.path
 import csv
 import sqlite3
-
 import mysql.connector
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import pymysql
 
-import Clases
+from PythonEjercicios import Clases
+
 
 class GestorBBDDorm:
 
@@ -24,7 +24,7 @@ class GestorBBDDorm:
             engine = create_engine("mysql://olimpiadas:olimpiadas@localhost/olimpiadas", echo=True)
         elif opcion == 2:
             self.paramStyle(sqlite3)
-            conexion = sqlite3.connect("olimpiadas.sqlite")
+            engine = create_engine('sqlite:///database.db')
 
         else:
             print("Opción incorrecta")
@@ -58,7 +58,7 @@ class GestorBBDDorm:
             dict_olimpiada[str(olimpiada.id_olimpiada)] = olimpiada.nombre
 
         id_olimpiada = input("Selecciona id olimpiada")
-# hola
+
         query = sesion.query(Clases.Evento).filter(Clases.Evento.id_olimpiada==id_olimpiada)
         dict_deporte = {}
         for deporte in query:
@@ -78,12 +78,13 @@ class GestorBBDDorm:
 
         print(temporada, dict_olimpiada[id_olimpiada], dict_deporte[id_deporte], dict_evento[id_evento])
 
-        query = sesion.query(Clases.Participacion).filter( Clases.Participacion.id_evento == id_evento)
+        query = sesion.query(Clases.Evento).filter(Clases.Evento.id_olimpiada==id_olimpiada,Clases.Evento.id_deporte == id_deporte)
         for participacion in query:
             print(participacion.deportista.nombre, participacion.deportista.sexo, participacion.deportista.altura, participacion.deportista.peso, participacion.edad, participacion.evento.nombre, participacion.medalla)
 
 
         sesion.close()
+        engine.close()
 
 
     def modificarMedallaDeportista(self):
@@ -98,7 +99,7 @@ class GestorBBDDorm:
 
         elif opcion == 2:
             self.paramStyle(sqlite3)
-            conexion = sqlite3.connect("olimpiadas.sqlite")
+            engine = create_engine('sqlite:///database.db')
 
         else:
             print("Opción incorrecta")
@@ -118,12 +119,14 @@ class GestorBBDDorm:
             print("Número: " + deportista.id_deportista + ", " + "Nombre: " +deportista.nombre + ".")
         id_deportista = input("Introduce número: ")
 
-        queryParticipacion = "SELECT p.id_evento,e.nombre FROM Participacion p,Evento e WHERE p.id_deportista = " + s + " AND e.id_evento = p.id_evento"
-        cursor.execute(queryParticipacion, (id_deportista,))
-        result_set = cursor.fetchall()
+        query = sesion.query(Clases.Participacion,Clases.Evento,Clases.Olimpiada).filter(
+            Clases.Evento.id_evento==Clases.Participacion.id_evento,
+            Clases.Olimpiada.id_olimpiada==Clases.Evento.id_olimpiada,
+            Clases.Participacion.id_deportista==id_deportista
+        )
         print("EVENTOS")
-        for row in result_set:
-            print("Número: " + str(row[0]) + ", " + "Nombre: " + str(row[1]) + ".")
+        for participacion,evento,olimpiada in query:
+            print("Número: " + str(evento.id_evento) + ", " + "Nombre: " + str(evento.nombre) + ".")
         id_evento = input("Introduce número: ")
 
         print("1. Oro")
@@ -144,12 +147,13 @@ class GestorBBDDorm:
             return
 
         #UPDATE
-        queryUpdate = "UPDATE Participacion SET medalla = " + s + " WHERE id_deportista = " + s +" AND id_evento = " + s
-        cursor.execute(queryUpdate, (medalla, id_deportista, id_evento))
 
+        sesion.query(Clases.Participacion).filter(Clases.Participacion.id_deportista==id_deportista,Clases.Participacion.id_evento==id_evento).update({Clases.Participacion.medalla:medalla}, synchronize_session = False)
+        sesion.commit()
         print("Medalla modificada.")
 
-        conexion.close()
+        sesion.close()
+        engine.close()
 
     def aniadirParticipacion(self):
 
@@ -159,27 +163,24 @@ class GestorBBDDorm:
 
         if opcion == 1:
             self.paramStyle(mysql.connector)
-            conexion = mysql.connector.connect(host="localhost", database="olimpiadas", user="olimpiadas",
-                                               passwd="olimpiadas", autocommit=True)
+            engine = create_engine("mysql://olimpiadas:olimpiadas@localhost/olimpiadas", echo=True)
         elif opcion == 2:
             self.paramStyle(sqlite3)
-            conexion = sqlite3.connect("olimpiadas.sqlite")
-
+            engine = create_engine('sqlite:///database.db')
         else:
             print("Opción incorrecta")
             return
 
-        cursor = conexion.cursor()
         s = self.ps
+        Sesion = sessionmaker(bind=engine)
+        sesion = Sesion()
 
         nom_dep = input("Introduce nombre de deportista")
-        queryDeportista = "SELECT id_deportista,nombre FROM Deportista WHERE nombre LIKE " + s
-        cursor.execute(queryDeportista, ("%" + nom_dep + "%",))
-        result_set = cursor.fetchall()
+        query = sesion.query(Clases.Deportista).filter(Clases.Deportista.nombre.match("%"+nom_dep+"%"))
         print("DEPORTISTAS")
-        if(result_set.__len__()!=0):
-            for row in result_set:
-                print("Número: " + str(row[0]) + ", " + "Nombre: " + str(row[1]) + ".")
+        if(query.__len__()!=0):
+            for deportista in query:
+                print("Número: " + str(deportista.id_deportista) + ", " + "Nombre: " + str(deportista.nombre) + ".")
             id_deportista = input("Introduce número: ")
         else:
             print("CREAR DEPORTISTA")
@@ -188,8 +189,9 @@ class GestorBBDDorm:
             peso = input("Introduce peso")
             altura = input("Introduce altura")
 
-            queryInsertDeportista = "INSERT INTO Deportista(nombre,sexo,peso,altura) VALUES  ("+s+", "+s+", "+s+", "+s+")"
-            cursor.execute(queryInsertDeportista, ( nombre, sexo, peso, altura))
+            deportista = Clases.Deportista(nombre=nombre, sexo=sexo, peso=peso, altura=altura)
+            id_deportista = sesion.add(deportista)
+            sesion.commit()
 
         print("1. Temporada Winter")
         print("2. Temporada Summer")
@@ -203,29 +205,23 @@ class GestorBBDDorm:
             return
 
 
-        queryEdicion = "SELECT id_olimpiada,nombre FROM Olimpiada WHERE temporada = " + s
-        cursor.execute(queryEdicion, (temporada,))
-        result_set = cursor.fetchall()
+        queryEdicion = sesion.query(Clases.Olimpiada).filter(Clases.Olimpiada.temporada.match("%"+temporada+"%"))
         print("EDICIONES")
-        for row in result_set:
-            print("Número: " + str(row[0]) + ", " + "Nombre: " + str(row[1]) + ".")
+        for olimpiada in queryEdicion:
+            print("Número: " + str(olimpiada.id_olimpiada) + ", " + "Nombre: " + str(olimpiada.nombre) + ".")
 
         id_olimpiada = input("Introduce número: ")
 
-        queryDeportes = "SELECT DISTINCT d.id_deporte id_deporte,d.nombre nombre FROM Deporte d,Evento ev WHERE ev.id_olimpiada = " + s + " AND d.id_deporte = ev.id_deporte"
-        cursor.execute(queryDeportes, (id_olimpiada,))
-        result_set = cursor.fetchall()
+        queryDeportes = sesion.query(Clases.Deporte).filter(Clases.Evento.id_deporte==Clases.Deporte.id_deporte,Clases.Evento.id_olimpiada==id_olimpiada)
         print("DEPORTES")
-        for row in result_set:
-            print("Número: " + str(row[0]) + ", " + "Nombre: " + str(row[1]) + ".")
+        for deporte in queryDeportes:
+            print("Número: " + str(deporte.id_deporte) + ", " + "Nombre: " + str(deporte.nombre) + ".")
         id_deporte = input("Introduce número: ")
 
-        queryEvento = "SELECT id_evento,nombre FROM Evento WHERE id_olimpiada = " + s + " AND id_deporte = " + s
-        cursor.execute(queryEvento, (id_olimpiada, id_deporte))
-        result_set = cursor.fetchall()
+        queryEvento = sesion.query(Clases.Evento).filter(Clases.Evento.id_deporte==id_deporte,Clases.Evento.id_olimpiada==id_olimpiada)
         print("EVENTOS")
-        for row in result_set:
-            print("Número: " + str(row[0]) + ", " + "Nombre: " + str(row[1]) + ".")
+        for evento in queryEvento:
+            print("Número: " + str(evento.id_evento) + ", " + "Nombre: " + str(evento.nombre) + ".")
 
         id_evento = input("Introduce número: ")
 
@@ -234,12 +230,20 @@ class GestorBBDDorm:
         medalla = input("Introduce medalla")
 
         # INSERT
-        queryInsert = "INSERT INTO Participacion (id_deportista,id_evento,id_equipo,edad,medalla) VALUES ("+s+", "+s+", "+s+", "+s+", "+s+")"
-        cursor.execute(queryInsert, (id_deportista, id_evento, id_equipo, edad, medalla))
+        participacion = Clases.Participacion(
+            id_deportista=id_deportista,
+            id_evento=id_evento,
+            id_equipo=id_equipo,
+            edad=edad,
+            medalla=medalla
+        )
+        sesion.add(participacion)
+        sesion.commit()
 
         print("Participación añadida.")
 
-        conexion.close()
+        sesion.close()
+        engine.close()
 
     def eliminarParticipacion(self):
 
@@ -249,46 +253,53 @@ class GestorBBDDorm:
 
         if opcion == 1:
             self.paramStyle(mysql.connector)
-            conexion = mysql.connector.connect(host="localhost", database="olimpiadas", user="olimpiadas",
-                                               passwd="olimpiadas", autocommit=True)
+            engine = create_engine("mysql://olimpiadas:olimpiadas@localhost/olimpiadas", echo=True)
         elif opcion == 2:
             self.paramStyle(sqlite3)
-            conexion = sqlite3.connect("olimpiadas.sqlite")
-
+            engine = create_engine('sqlite:///database.db')
         else:
             print("Opción incorrecta")
             return
 
         s = self.ps
-
-        cursor = conexion.cursor()
+        Sesion = sessionmaker(bind=engine)
+        sesion = Sesion()
 
         nom_dep = input("Introduce nombre de deportista")
-        queryDeportista = "SELECT id_deportista,nombre FROM Deportista WHERE nombre LIKE " + s
-        cursor.execute(queryDeportista, ("%" + nom_dep + "%",))
-        result_set = cursor.fetchall()
+        queryDeportista = sesion.query(Clases.Deportista).filter(Clases.Deportista.nombre.match("%"+nom_dep+"%"))
         print("DEPORTISTAS")
-        for row in result_set:
-            print("Número: " + str(row[0]) + ", " + "Nombre: " + str(row[1]) + ".")
+        for deportista in queryDeportista:
+            print("Número: " + str(deportista.id_deportista) + ", " + "Nombre: " + str(deportista.nombre) + ".")
         id_deportista = input("Introduce número: ")
 
-        queryParticipacion = "SELECT p.id_evento,e.nombre FROM Participacion p,Evento e WHERE p.id_deportista = " + s + " AND e.id_evento = p.id_evento"
-        cursor.execute(queryParticipacion, (id_deportista,))
-        result_set = cursor.fetchall()
+        queryParticipacion = sesion.query(Clases.Participacion,Clases.Evento,Clases.Olimpiada,Clases.Deportista).filter(
+            Clases.Evento.id_evento==Clases.Participacion.id_evento,
+            Clases.Olimpiada.id_olimpiada==Clases.Evento.id_olimpiada,
+            Clases.Deportista.id_deportista==Clases.Participacion.id_deportista,
+            Clases.Participacion.id_deportista==id_deportista
+        )
         print("EVENTOS")
-        for row in result_set:
-            print("Número: " + str(row[0]) + ", " + "Nombre: " + str(row[1]) + ".")
+        for participacion,evento,olimpiada,deportista in queryParticipacion:
+            print("Número: " + str(evento.id_eventon) + ", " + "Nombre: " + str(evento.nombre) + ".")
         id_evento = input("Introduce número: ")
-        queryDeleteParticipacion = "DELETE FROM Participacion WHERE id_deportista = " + s + " AND id_evento = " + s
-        cursor.execute(queryDeleteParticipacion, (id_deportista, id_evento))
+
+        participacion = sesion.query(Clases.Participacion).filter(
+            Clases.Participacion.id_evento == id_evento,
+        )
+        sesion.delete(participacion)
+        sesion.commit()
         print("Participacion borrada.")
 
-        if result_set.__len__()==1:
-            queryDeleteDeportista = "DELETE FROM Deportista WHERE id_deportista = " + s
-            cursor.execute(queryDeleteDeportista, (id_deportista,))
+        if queryParticipacion.__len__()==1:
+            deportista = sesion.query(Clases.Deportista).filter(
+                Clases.Deportista.id_evento == id_deportista,
+            )
+            sesion.delete(deportista)
+            sesion.commit()
             print("Deportista borrado.")
 
-        conexion.close()
+        sesion.close()
+        engine.close()
 
     def crearBBDDMySql(self):
 
